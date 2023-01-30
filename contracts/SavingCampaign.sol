@@ -40,6 +40,7 @@ contract SavingChallenge {
     uint256 public payTime = 0;
     uint256 public partnerFee = 0;
     uint256 public platformFee = 0;
+    uint256 public withdrawFee = 0;
     ERC20 public stableToken; // USDC Polygon Muimbai 0x0FA8781a83E46826621b3BC094Ea2A0212e71B23
 
     // BucksEvents
@@ -70,7 +71,7 @@ contract SavingChallenge {
         require(_saveAmount >= 10, "El pago debe ser minimo de 10 USD");
         require(_partnerFee<= 10000);
         partner = _partner;
-        partnerFee = (saveAmount * 100 * _partnerFee * payments)/1000000;
+        partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
         devFund = _devFund;
         cashIn = _cashIn * 10 ** stableToken.decimals();
         saveAmount = _saveAmount * 10 ** stableToken.decimals();
@@ -79,6 +80,7 @@ contract SavingChallenge {
         require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
         payTime = _payTime * 60; //86400;
         platformFee = (cashIn * 100 * _platformFee)/ 1000000;
+        withdrawFee = _withdrawFee;
         emit ChallengeCreated(saveAmount, numPayments);
     }
 
@@ -161,12 +163,13 @@ contract SavingChallenge {
         }
         uint256 savedAmountTemp = 0;
         savedAmountTemp = users[msg.sender].availableSavings + users[msg.sender].availableCashIn - partnerFee;
-        withdrawFee = (savedAmountTemp * 100 * _withdrawFee)/ 1000000;
+        uint256 withdrawFeeTemp = 0;
+        withdrawFeeTemp = (savedAmountTemp * 100 * withdrawFee)/ 1000000;
         users[msg.sender].availableSavings = 0;
         users[msg.sender].availableCashIn = 0;
         (bool payPartnerSuccess) = transferTo(partner, partnerFee);
         (bool withdrawSuccess) = transferTo(users[msg.sender].userAddr, savedAmountTemp);
-        emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, success);
+        emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
     }
 
     function transferFrom(address _to, uint256 _payAmount) internal returns (bool) {
