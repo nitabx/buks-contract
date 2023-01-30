@@ -57,20 +57,20 @@ contract SavingChallenge {
         uint256 _saveAmount,
         uint256 _numPayments,
         address _partner,
-        uint256 _partnerFee,
+        uint256 _partnerFee, //input = 1 is 0.01
         uint256 _payTime,
         ERC20 _token,
         address _devFund,
-        uint256 _platformFee,
+        uint256 _platformFee, //input = 1 is 0.01
         uint256 _withdrawFee
     ) public {
         stableToken = _token;
         require(_partner != address(0), "Partner address cant be zero");
         require(_cashIn >= 10, "El deposito de seguridad debe ser minimo de 10 USD");
         require(_saveAmount >= 10, "El pago debe ser minimo de 10 USD");
-        require(_partnerFee<= 100);
+        require(_partnerFee<= 10000);
         partner = _partner;
-        partnerFee = (cashIn * 100 * _partnerFee)/10000;
+        partnerFee = (saveAmount * 100 * _partnerFee * payments)/1000000;
         devFund = _devFund;
         cashIn = _cashIn * 10 ** stableToken.decimals();
         saveAmount = _saveAmount * 10 ** stableToken.decimals();
@@ -78,8 +78,7 @@ contract SavingChallenge {
         numPayments = _numPayments;
         require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
         payTime = _payTime * 60; //86400;
-        platformFee = (saveAmount * 100 * _platformFee)/ 10000; // calculate 5% fee
-        withdrawFee = _withdrawFee;
+        platformFee = (cashIn * 100 * _platformFee)/ 1000000;
         emit ChallengeCreated(saveAmount, numPayments);
     }
 
@@ -105,8 +104,8 @@ contract SavingChallenge {
             !users[msg.sender].isActive,
             "Ya estas registrado en esta ronda"
         );
-        users[msg.sender] = User(msg.sender, cashIn, 0, 0, true); //create user
-        (bool registerSuccess) = transferFrom(address(this), cashIn);
+        users[msg.sender] = User(msg.sender, cashIn - platformFee, 0, 0, true); //create user
+        (bool registerSuccess) = transferFrom(address(this), cashIn - platformFee);
         emit PayCashIn(msg.sender, registerSuccess);
         (bool payFeeSuccess) = transferFrom(devFund, platformFee);
         emit PayPlatformFee(msg.sender, payFeeSuccess);
@@ -160,13 +159,13 @@ contract SavingChallenge {
         if (payment < realPayment){
             AdvancePayment();
         }
-        withdrawFee = ((users[msg.sender].availableSavings + users[msg.sender].availableCashIn) * 100 * _withdrawFee)/ 10000;
         uint256 savedAmountTemp = 0;
         savedAmountTemp = users[msg.sender].availableSavings + users[msg.sender].availableCashIn - partnerFee;
+        withdrawFee = (savedAmountTemp * 100 * _withdrawFee)/ 1000000;
         users[msg.sender].availableSavings = 0;
         users[msg.sender].availableCashIn = 0;
-        transferTo(partner, partnerFee);
-        (bool success) = transferTo(users[msg.sender].userAddr, savedAmountTemp);
+        (bool payPartnerSuccess) = transferTo(partner, partnerFee);
+        (bool withdrawSuccess) = transferTo(users[msg.sender].userAddr, savedAmountTemp);
         emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, success);
     }
 
