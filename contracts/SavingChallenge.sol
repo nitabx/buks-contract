@@ -62,7 +62,7 @@ contract SavingChallenge {
     ) public {
         stableToken = _token;
         require(_partner != address(0), "Partner address cant be zero");
-        require(_saveAmount >= 10, "El pago debe ser minimo de 10 USD");
+        require(_saveAmount >= 1, "El pago debe ser minimo de 1 USD");
         require(_partnerFee<= 10000);
         partner = _partner;
         saveAmount = _saveAmount * 10 ** stableToken.decimals();
@@ -71,7 +71,7 @@ contract SavingChallenge {
         numPayments = _numPayments;
         partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
         require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
-        payTime = _payTime * 60; //86400;
+        payTime = _payTime * 86400;
         platformFee = (saveAmount * 100 * _platformFee)/ 1000000;
         withdrawFee = _withdrawFee;
         emit ChallengeCreated(saveAmount, numPayments);
@@ -191,5 +191,17 @@ contract SavingChallenge {
 
     function getUserCount() public view returns (uint){
         return(addressOrderList.length);
+    }
+
+    function getUserAvailableSavings(address _userAddr) public view returns (uint256){
+			return(users[_userAddr].availableSavings);
+    }
+
+    function getUserLatePayments(address _userAddr) public view returns (uint8){
+			return(users[_userAddr].latePayments);
+    }
+
+    function getUserIsActive(address _userAddr) public view returns (bool){
+			return(users[_userAddr].isActive);
     }
 }
