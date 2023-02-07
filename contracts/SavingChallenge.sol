@@ -2,6 +2,8 @@
 pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
+import "hardhat/console.sol";
+
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract SavingChallenge {
@@ -71,7 +73,7 @@ contract SavingChallenge {
         numPayments = _numPayments;
         partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
         require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
-        payTime = _payTime * 86400;
+        payTime = _payTime * 60; //86400;
         platformFee = (saveAmount * 100 * _platformFee)/ 1000000;
         withdrawFee = _withdrawFee;
         emit ChallengeCreated(saveAmount, numPayments);
@@ -126,9 +128,9 @@ contract SavingChallenge {
         isRegisteredUser(users[msg.sender].isActive)
         atStage(Stages.Save)
     {
-        require (getRealPayment() < numPayments, "Challenge is not over yet");
+        require (getRealPayment() <= numPayments, "Challenge is over, execute withdrawChallenge");
         uint8 realPayment = getRealPayment();
-        if (payment <= realPayment){
+        if (payment < realPayment){
             AdvancePayment();
         }
         uint256 savedAmountTemp = 0;
@@ -146,6 +148,10 @@ contract SavingChallenge {
 
     function withdrawChallenge() external atStage(Stages.Save) isRegisteredUser(users[msg.sender].isActive){
         require (getRealPayment() > numPayments, "Challenge is not over yet");
+        uint8 realPayment = getRealPayment();
+        if (payment < realPayment && realPayment < numPayments+2){
+            AdvancePayment();
+        }
         uint256 savedAmountTemp = 0;
         savedAmountTemp = users[msg.sender].availableSavings - partnerFee;
         users[msg.sender].availableSavings = 0;
@@ -168,10 +174,16 @@ contract SavingChallenge {
     function AdvancePayment() private {
         for (uint8 i = 0; i < addressOrderList.length ; i++) {
             address useraddress = addressOrderList[i];
-            uint256 obligation = ((saveAmount * payment) - partnerFee);
-
-            if (obligation > users[useraddress].availableSavings){
-                users[useraddress].latePayments++;
+            //uint256 obligation = ((saveAmount * payment) - platformFee);
+            uint256 donePayments = ((users[useraddress].availableSavings+platformFee)/saveAmount);
+            console.log("Pagos hechos ", i, " : ", donePayments);
+            uint256 latePaymentTemp = users[useraddress].latePayments;
+            if (donePayments < payment){
+                console.log("donePayments < payment is true");
+                if (payment-users[useraddress].latePayments > donePayments){
+                    console.log("payment-users[useraddress].latePayments > donePayments is true, aumento de latePayment");
+                    users[useraddress].latePayments++;
+                }
             }
         }
         payment++;
