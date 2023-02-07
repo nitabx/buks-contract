@@ -3,8 +3,8 @@ pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "hardhat/console.sol";
-
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@aave/core-v3/contracts/interfaces/IPool.sol";
 
 contract SavingChallenge {
     enum Stages {
@@ -40,7 +40,9 @@ contract SavingChallenge {
     uint256 public partnerFee = 0;
     uint256 public platformFee = 0;
     uint256 public withdrawFee = 0;
-    ERC20 public stableToken; // USDC Polygon Muimbai 0x0FA8781a83E46826621b3BC094Ea2A0212e71B23
+    ERC20 public stableToken; // USDC Fuji 0x5425890298aed601595a70AB815c96711a31Bc65
+    // USDC Fuji Aave 0x6a17716Ce178e84835cfA73AbdB71cb455032456
+    // aAvaUSDC Fuji 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E
 
     // BucksEvents
     event ChallengeCreated(uint256 indexed saveAmount, uint256 indexed numPayments);
@@ -73,7 +75,7 @@ contract SavingChallenge {
         numPayments = _numPayments;
         partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
         require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
-        payTime = _payTime * 60; //86400;
+        payTime = _payTime * 86400;
         platformFee = (saveAmount * 100 * _platformFee)/ 1000000;
         withdrawFee = _withdrawFee;
         emit ChallengeCreated(saveAmount, numPayments);
@@ -115,10 +117,13 @@ contract SavingChallenge {
             (bool registerSuccess) = transferFrom(address(this), saveAmount - platformFee);
             users[msg.sender].availableSavings+= (saveAmount - platformFee);
             emit RegisterUser(msg.sender);
+            ERC20(stableToken).approve(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00, (saveAmount * numPayments));
+            IPool(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00).supply(address(stableToken), (saveAmount - platformFee), address(this), 0);
         }
         else{
             (bool success) = transferFrom(address(this), saveAmount);
             users[msg.sender].availableSavings+= saveAmount;
+            IPool(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00).supply(address(stableToken), saveAmount, address(this), 0);
             emit Payment(msg.sender, success);
         }
     }
@@ -158,6 +163,7 @@ contract SavingChallenge {
         users[msg.sender].isActive = false;
         (bool payPartnerSuccess) = transferTo(partner, partnerFee);
         (bool withdrawSuccess) = transferTo(users[msg.sender].userAddr, savedAmountTemp);
+        IPool(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00).withdraw(address(stableToken), savedAmountTemp, address(this));
         emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
     }
 
@@ -177,7 +183,6 @@ contract SavingChallenge {
             //uint256 obligation = ((saveAmount * payment) - platformFee);
             uint256 donePayments = ((users[useraddress].availableSavings+platformFee)/saveAmount);
             console.log("Pagos hechos ", i, " : ", donePayments);
-            uint256 latePaymentTemp = users[useraddress].latePayments;
             if (donePayments < payment){
                 console.log("donePayments < payment is true");
                 if (payment-users[useraddress].latePayments > donePayments){
