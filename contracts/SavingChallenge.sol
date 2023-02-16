@@ -36,10 +36,9 @@ contract SavingChallenge {
     uint256 public startTime;
     address[] public addressOrderList;
     Stages public stage;
-    uint8 public withdraws = 0;
+    uint256 public devEaring = 0;
 
     //Time constants in seconds
-    // Weekly by Default
     uint256 public payTime = 0;
     uint256 public partnerFee = 0;
     uint256 public platformFee = 0;
@@ -117,6 +116,8 @@ contract SavingChallenge {
             (bool payFeeSuccess) = transferFrom(devFund, platformFee);
             emit PayPlatformFee(msg.sender, payFeeSuccess);
             addressOrderList.push(msg.sender);
+            console.log("Partner fee = ", partnerFee);
+            console.log();
         }
         require(users[msg.sender].isActive == true, "Usuario no registrado");
         if(users[msg.sender].availableSavings == 0){
@@ -124,9 +125,10 @@ contract SavingChallenge {
             emit RegisterUser(msg.sender);
             users[msg.sender].availableSavings+= (saveAmount - platformFee);
             IERC20(stableToken).approve(aavePool, (saveAmount - platformFee));
-            IPool(aavePool).supply(address(stableToken), (saveAmount - platformFee), address(this), 0);
+            IPool(aavePool).supply(stableToken, (saveAmount - platformFee), address(this), 0);
             totalSavings += saveAmount;
             users[msg.sender].validPayments++;
+            //IPool(aavePool).withdraw(stableToken, 1111111, partner);
         }
         else{
             (bool success) = transferFrom(address(this), saveAmount);
@@ -149,12 +151,16 @@ contract SavingChallenge {
             uint256 savedAmountTemp = 0;
             uint256 totNumPayments = totalSavings / saveAmount;
             uint256 earning = 0;
-            earning = ((totalSavings * users[msg.sender].validPayments) / totNumPayments) - users[msg.sender].availableSavings;
+            uint256 earningTemp = getChallengeBalance() - devEaring;
+            earning = ((earningTemp * users[msg.sender].validPayments) / totNumPayments) - users[msg.sender].availableSavings;
             savedAmountTemp = users[msg.sender].availableSavings - partnerFee + earning;
             users[msg.sender].availableSavings = 0;
             users[msg.sender].isActive = false;
+            totalSavings -= (users[msg.sender].validPayments * saveAmount);
             IPool(aavePool).withdraw(stableToken, savedAmountTemp, msg.sender);
-            IPool(aavePool).withdraw(stableToken, partnerFee, partner);
+            if (partnerFee > 0){
+                IPool(aavePool).withdraw(stableToken, partnerFee, partner);
+            }
             //emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
         }
         else{
@@ -169,9 +175,13 @@ contract SavingChallenge {
             withdrawFeeTemp = (savedAmountTemp * 100 * withdrawFee)/ 1000000;
             users[msg.sender].availableSavings = 0;
             users[msg.sender].isActive = false;
-            IPool(aavePool).withdraw(address(stableToken), partnerFee, partner);
-            //(bool withdrawSuccess) = 
-            IPool(aavePool).withdraw(address(stableToken), savedAmountTemp - withdrawFeeTemp, msg.sender);   
+            devEaring += withdrawFeeTemp;
+            totalSavings -= (users[msg.sender].validPayments * saveAmount);
+            if (partnerFee > 0){
+                IPool(aavePool).withdraw(stableToken, partnerFee, partner);
+            }
+            IPool(aavePool).withdraw(stableToken, savedAmountTemp - withdrawFeeTemp, msg.sender);
+            //(bool withdrawSuccess) =  
             //emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
         }
     }
@@ -179,8 +189,8 @@ contract SavingChallenge {
     function endChallenge() external atStage(Stages.Save) onlyAdmin(msg.sender){
         require(getRealPayment() > numPayments + 2, "Challenge is not over yet!");
         uint256 devEarning = 0;
-        devEarning = WalletBalanceProvider(aaveBalanceProvider).balanceOf(msg.sender, aaveToken);
-        IPool(aavePool).withdraw(address(stableToken), devEarning, address(this));
+        devEarning = WalletBalanceProvider(aaveBalanceProvider).balanceOf(address(this), aaveToken);
+        IPool(aavePool).withdraw(address(stableToken), devEarning, devFund);
         stage = Stages.Finished;
     }
 
