@@ -3,8 +3,9 @@ pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "hardhat/console.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@aave/core-v3/contracts/interfaces/IPool.sol";
+import "@aave/periphery-v3/contracts/misc/WalletBalanceProvider.sol";
+
 
 contract SavingChallenge {
     enum Stages {
@@ -16,6 +17,7 @@ contract SavingChallenge {
     struct User {
         address userAddr;
         uint256 availableSavings;
+        uint8 validPayments;
         uint8 latePayments;
         bool isActive;
     }
@@ -27,12 +29,14 @@ contract SavingChallenge {
     uint256 public saveAmount;
     uint256 public numPayments;
     address public devFund; // fees will be sent here
+    uint256 public totalSavings;
 
     //Counters and flags
     uint8 public payment = 1;
     uint256 public startTime;
     address[] public addressOrderList;
     Stages public stage;
+    uint8 public withdraws = 0;
 
     //Time constants in seconds
     // Weekly by Default
@@ -40,10 +44,13 @@ contract SavingChallenge {
     uint256 public partnerFee = 0;
     uint256 public platformFee = 0;
     uint256 public withdrawFee = 0;
-    ERC20 public stableToken; // USDC Fuji 0x5425890298aed601595a70AB815c96711a31Bc65
-    // USDC Fuji Aave 0x6a17716Ce178e84835cfA73AbdB71cb455032456
-    // aAvaUSDC Fuji 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E
 
+    //ERC20 public stableToken;  // aAvaUSDC Fuji 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E
+    address public stableToken = 0x6a17716Ce178e84835cfA73AbdB71cb455032456;
+    address aavePool = 0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00;
+    address payable aaveBalanceProvider = payable(0xd2495B9f9F78092858e09e294Ed5c17Dbc5fCfA8);
+    address aaveToken = 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E;
+   
     // BucksEvents
     event ChallengeCreated(uint256 indexed saveAmount, uint256 indexed numPayments);
     event RegisterUser(address indexed user);
@@ -59,25 +66,24 @@ contract SavingChallenge {
         address _partner,
         uint256 _partnerFee, //input = 1 is 0.01
         uint256 _payTime,
-        ERC20 _token,
         address _devFund,
         uint256 _platformFee, //input = 1 is 0.01
         uint256 _withdrawFee
     ) public {
-        stableToken = _token;
         require(_partner != address(0), "Partner address cant be zero");
         require(_saveAmount >= 1, "El pago debe ser minimo de 1 USD");
-        require(_partnerFee<= 10000);
+        require(_partnerFee <= 10000);
         partner = _partner;
-        saveAmount = _saveAmount * 10 ** stableToken.decimals();
+        saveAmount = _saveAmount * 10 ** 6;
         devFund = _devFund;
         stage = Stages.Save;
         numPayments = _numPayments;
         partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
         require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
-        payTime = _payTime * 86400;
+        payTime = _payTime * 60;//86400;
         platformFee = (saveAmount * 100 * _platformFee)/ 1000000;
         withdrawFee = _withdrawFee;
+        totalSavings = 0;
         emit ChallengeCreated(saveAmount, numPayments);
         startTime = block.timestamp;
     }
@@ -87,8 +93,8 @@ contract SavingChallenge {
         _;
     }
 
-    modifier onlyPartner(address partner) {
-        require(msg.sender == partner, "Only the partner can call this function");
+    modifier onlyAdmin(address devFund) {
+        require(msg.sender == devFund, "Only the admin can call this function");
         _;
     }
 
@@ -107,73 +113,84 @@ contract SavingChallenge {
             AdvancePayment();
         }
         if (payment == 1 && users[msg.sender].isActive == false){
-            users[msg.sender] = User(msg.sender, 0, 0, true); //create user
+            users[msg.sender] = User(msg.sender, 0, 0, 0, true); //create user
             (bool payFeeSuccess) = transferFrom(devFund, platformFee);
             emit PayPlatformFee(msg.sender, payFeeSuccess);
             addressOrderList.push(msg.sender);
         }
         require(users[msg.sender].isActive == true, "Usuario no registrado");
         if(users[msg.sender].availableSavings == 0){
-            (bool registerSuccess) = transferFrom(address(this), saveAmount - platformFee);
-            users[msg.sender].availableSavings+= (saveAmount - platformFee);
+            (bool registerUser) = transferFrom(address(this), saveAmount - platformFee);
             emit RegisterUser(msg.sender);
-            ERC20(stableToken).approve(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00, (saveAmount * numPayments));
-            IPool(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00).supply(address(stableToken), (saveAmount - platformFee), address(this), 0);
+            users[msg.sender].availableSavings+= (saveAmount - platformFee);
+            IERC20(stableToken).approve(aavePool, (saveAmount - platformFee));
+            IPool(aavePool).supply(address(stableToken), (saveAmount - platformFee), address(this), 0);
+            totalSavings += saveAmount;
+            users[msg.sender].validPayments++;
         }
         else{
             (bool success) = transferFrom(address(this), saveAmount);
-            users[msg.sender].availableSavings+= saveAmount;
-            IPool(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00).supply(address(stableToken), saveAmount, address(this), 0);
             emit Payment(msg.sender, success);
+            users[msg.sender].availableSavings+= saveAmount;
+            IERC20(stableToken).approve(aavePool, (saveAmount));
+            IPool(aavePool).supply(address(stableToken), saveAmount, address(this), 0);
+            totalSavings += saveAmount;   
+            users[msg.sender].validPayments++;
         }
     }
-
-    function earlyWithdraw()
-        external
-        isRegisteredUser(users[msg.sender].isActive)
-        atStage(Stages.Save)
-    {
-        require (getRealPayment() <= numPayments, "Challenge is over, execute withdrawChallenge");
-        uint8 realPayment = getRealPayment();
-        if (payment < realPayment){
-            AdvancePayment();
-        }
-        uint256 savedAmountTemp = 0;
-        savedAmountTemp = users[msg.sender].availableSavings - partnerFee;
-        uint256 withdrawFeeTemp = 0;
-        withdrawFeeTemp = (savedAmountTemp * 100 * withdrawFee)/ 1000000;
-        users[msg.sender].availableSavings = 0;
-        users[msg.sender].isActive = false;
-        (bool payPartnerSuccess) = transferTo(partner, partnerFee);
-        (bool withdrawSuccess) = transferTo(users[msg.sender].userAddr, (savedAmountTemp - withdrawFeeTemp));
-        emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
-        transferTo(devFund, withdrawFeeTemp);
-    }
-
 
     function withdrawChallenge() external atStage(Stages.Save) isRegisteredUser(users[msg.sender].isActive){
-        require (getRealPayment() > numPayments, "Challenge is not over yet");
-        uint8 realPayment = getRealPayment();
-        if (payment < realPayment && realPayment < numPayments+2){
-            AdvancePayment();
+        if (getRealPayment() > numPayments){
+            console.log("Withdraw");
+            uint8 realPayment = getRealPayment();
+            if (payment < realPayment && realPayment < numPayments+2){
+                AdvancePayment();
+            }
+            uint256 savedAmountTemp = 0;
+            uint256 totNumPayments = totalSavings / saveAmount;
+            uint256 earning = 0;
+            earning = ((totalSavings * users[msg.sender].validPayments) / totNumPayments) - users[msg.sender].availableSavings;
+            savedAmountTemp = users[msg.sender].availableSavings - partnerFee + earning;
+            users[msg.sender].availableSavings = 0;
+            users[msg.sender].isActive = false;
+            IPool(aavePool).withdraw(stableToken, savedAmountTemp, msg.sender);
+            IPool(aavePool).withdraw(stableToken, partnerFee, partner);
+            //emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
         }
-        uint256 savedAmountTemp = 0;
-        savedAmountTemp = users[msg.sender].availableSavings - partnerFee;
-        users[msg.sender].availableSavings = 0;
-        users[msg.sender].isActive = false;
-        (bool payPartnerSuccess) = transferTo(partner, partnerFee);
-        (bool withdrawSuccess) = transferTo(users[msg.sender].userAddr, savedAmountTemp);
-        IPool(0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00).withdraw(address(stableToken), savedAmountTemp, address(this));
-        emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
+        else{
+            console.log("Early Withdraw");
+            uint8 realPayment = getRealPayment();
+            if (payment < realPayment){
+                AdvancePayment();
+            }
+            uint256 savedAmountTemp = 0;
+            savedAmountTemp = users[msg.sender].availableSavings - partnerFee;
+            uint256 withdrawFeeTemp = 0;
+            withdrawFeeTemp = (savedAmountTemp * 100 * withdrawFee)/ 1000000;
+            users[msg.sender].availableSavings = 0;
+            users[msg.sender].isActive = false;
+            IPool(aavePool).withdraw(address(stableToken), partnerFee, partner);
+            //(bool withdrawSuccess) = 
+            IPool(aavePool).withdraw(address(stableToken), savedAmountTemp - withdrawFeeTemp, msg.sender);   
+            //emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
+        }
+    }
+
+    function endChallenge() external atStage(Stages.Save) onlyAdmin(msg.sender){
+        require(getRealPayment() > numPayments + 2, "Challenge is not over yet!");
+        uint256 devEarning = 0;
+        devEarning = WalletBalanceProvider(aaveBalanceProvider).balanceOf(msg.sender, aaveToken);
+        IPool(aavePool).withdraw(address(stableToken), devEarning, address(this));
+        stage = Stages.Finished;
     }
 
     function transferFrom(address _to, uint256 _payAmount) internal returns (bool) {
-      bool success = stableToken.transferFrom(msg.sender, _to, _payAmount);
+      bool success = IERC20(stableToken).transferFrom(msg.sender, _to, _payAmount);
       return success;
     }
 
     function transferTo(address _to, uint256 _amount) internal returns (bool) {
-      bool success = stableToken.transfer(_to, _amount);
+      bool success = IERC20(stableToken).transfer(_to, _amount);
       return success;
     }
 
@@ -220,5 +237,13 @@ contract SavingChallenge {
 
     function getUserIsActive(address _userAddr) public view returns (bool){
 			return(users[_userAddr].isActive);
+    }
+
+    function getUserValidPayments(address _userAddr) public view returns (uint256){
+            return(users[_userAddr].validPayments);
+    }
+
+    function getChallengeBalance() public view returns (uint256){
+            return(WalletBalanceProvider(aaveBalanceProvider).balanceOf(address(this), aaveToken));
     }
 }
