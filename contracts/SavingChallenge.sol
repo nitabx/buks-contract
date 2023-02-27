@@ -69,8 +69,8 @@ contract SavingChallenge {
         uint256 _platformFee, //input = 1 is 0.01
         uint256 _withdrawFee
     ) public {
-        require(_partner != address(0), "Partner address cant be zero");
-        require(_saveAmount >= 1, "El pago debe ser minimo de 1 USD");
+        require(_partner != address(0), "Err01");
+        require(_saveAmount >= 1, "Er02");
         require(_partnerFee <= 10000);
         partner = _partner;
         saveAmount = _saveAmount * 10 ** 6;
@@ -78,7 +78,7 @@ contract SavingChallenge {
         stage = Stages.Save;
         numPayments = _numPayments;
         partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
-        require(_payTime > 0, "El tiempo para pagar no puede ser menor a un dia");
+        require(_payTime > 0, "Err03");
         payTime = _payTime * 60;//86400;
         platformFee = (saveAmount * 100 * _platformFee)/ 1000000;
         withdrawFee = _withdrawFee;
@@ -88,25 +88,25 @@ contract SavingChallenge {
     }
 
     modifier atStage(Stages _stage) {
-        require(stage == _stage, "Stage incorrecto para ejecutar la funcion");
+        require(stage == _stage, "Err04");
         _;
     }
 
     modifier onlyAdmin(address devFund) {
-        require(msg.sender == devFund, "Only the admin can call this function");
+        require(msg.sender == devFund, "Err05");
         _;
     }
 
     modifier isRegisteredUser(bool user) {
-        require(user == true, "Usuario no registrado");
+        require(user == true, "Err06");
         _;
     }
 
     function addPayment()
         external
         atStage(Stages.Save) {
-        require(saveAmount <= futurePayments(), "Pago incorrecto");
-        require (getRealPayment() <= numPayments, "Challenge is not over yet");
+        require(saveAmount <= futurePayments(), "Err07");
+        require (getRealPayment() <= numPayments, "Err08");
         uint8 realPayment = getRealPayment();
         if (payment < realPayment){
             AdvancePayment();
@@ -119,7 +119,7 @@ contract SavingChallenge {
             console.log("Partner fee = ", partnerFee);
             console.log();
         }
-        require(users[msg.sender].isActive == true, "Usuario no registrado");
+        require(users[msg.sender].isActive == true, "Err06");
         if(users[msg.sender].availableSavings == 0){
             (bool registerUser) = transferFrom(address(this), saveAmount - platformFee);
             emit RegisterUser(msg.sender);
@@ -187,7 +187,7 @@ contract SavingChallenge {
     }
 
     function endChallenge() external atStage(Stages.Save) onlyAdmin(msg.sender){
-        require(getRealPayment() > numPayments + 2, "Challenge is not over yet!");
+        require(getRealPayment() > numPayments + 2, "Err09");
         uint256 devEarning = 0;
         devEarning = WalletBalanceProvider(aaveBalanceProvider).balanceOf(address(this), aaveToken);
         IPool(aavePool).withdraw(address(stableToken), devEarning, devFund);
