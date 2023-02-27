@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
-import "hardhat/console.sol";
 import "@aave/core-v3/contracts/interfaces/IPool.sol";
 import "@aave/periphery-v3/contracts/misc/WalletBalanceProvider.sol";
 
@@ -44,11 +43,17 @@ contract SavingChallenge {
     uint256 public platformFee = 0;
     uint256 public withdrawFee = 0;
 
-    //ERC20 public stableToken;  // aAvaUSDC Fuji 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E
-    address public stableToken = 0x6a17716Ce178e84835cfA73AbdB71cb455032456;
+    // Fuji
+    /*address public stableToken = 0x6a17716Ce178e84835cfA73AbdB71cb455032456;
     address aavePool = 0xf319Bb55994dD1211bC34A7A26A336C6DD0B1b00;
     address payable aaveBalanceProvider = payable(0xd2495B9f9F78092858e09e294Ed5c17Dbc5fCfA8);
-    address aaveToken = 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E;
+    address aaveToken = 0x2c4a078f1FC5B545f3103c870d22f9AC5F0F673E;*/
+
+    // Mainet
+    address public stableToken = 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E;
+    address aavePool = 0x794a61358D6845594F94dc1DB02A252b5b4814aD;
+    address payable aaveBalanceProvider = payable(0xBc790382B3686abffE4be14A030A96aC6154023a);
+    address aaveToken = 0x625E7708f30cA75bfd92586e17077590C60eb4cD;
    
     // BucksEvents
     event ChallengeCreated(uint256 indexed saveAmount, uint256 indexed numPayments);
@@ -79,7 +84,7 @@ contract SavingChallenge {
         numPayments = _numPayments;
         partnerFee = (saveAmount * 100 * _partnerFee * numPayments)/1000000;
         require(_payTime > 0, "Err03");
-        payTime = _payTime * 60;//86400;
+        payTime = _payTime * 86400;
         platformFee = (saveAmount * 100 * _platformFee)/ 1000000;
         withdrawFee = _withdrawFee;
         totalSavings = 0;
@@ -116,8 +121,6 @@ contract SavingChallenge {
             (bool payFeeSuccess) = transferFrom(devFund, platformFee);
             emit PayPlatformFee(msg.sender, payFeeSuccess);
             addressOrderList.push(msg.sender);
-            console.log("Partner fee = ", partnerFee);
-            console.log();
         }
         require(users[msg.sender].isActive == true, "Err06");
         if(users[msg.sender].availableSavings == 0){
@@ -143,7 +146,6 @@ contract SavingChallenge {
 
     function withdrawChallenge() external atStage(Stages.Save) isRegisteredUser(users[msg.sender].isActive){
         if (getRealPayment() > numPayments){
-            console.log("Withdraw");
             uint8 realPayment = getRealPayment();
             if (payment < realPayment && realPayment < numPayments+2){
                 AdvancePayment();
@@ -164,7 +166,6 @@ contract SavingChallenge {
             //emit WithdrawFunds(users[msg.sender].userAddr, savedAmountTemp, withdrawSuccess);
         }
         else{
-            console.log("Early Withdraw");
             uint8 realPayment = getRealPayment();
             if (payment < realPayment){
                 AdvancePayment();
@@ -187,7 +188,7 @@ contract SavingChallenge {
     }
 
     function endChallenge() external atStage(Stages.Save) onlyAdmin(msg.sender){
-        require(getRealPayment() > numPayments + 2, "Err09");
+        require(getRealPayment() > numPayments + 1, "Err09");
         uint256 devEarning = 0;
         devEarning = WalletBalanceProvider(aaveBalanceProvider).balanceOf(address(this), aaveToken);
         IPool(aavePool).withdraw(address(stableToken), devEarning, devFund);
@@ -209,11 +210,8 @@ contract SavingChallenge {
             address useraddress = addressOrderList[i];
             //uint256 obligation = ((saveAmount * payment) - platformFee);
             uint256 donePayments = ((users[useraddress].availableSavings+platformFee)/saveAmount);
-            console.log("Pagos hechos ", i, " : ", donePayments);
             if (donePayments < payment){
-                console.log("donePayments < payment is true");
                 if (payment-users[useraddress].latePayments > donePayments){
-                    console.log("payment-users[useraddress].latePayments > donePayments is true, aumento de latePayment");
                     users[useraddress].latePayments++;
                 }
             }
