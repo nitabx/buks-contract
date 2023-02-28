@@ -35,7 +35,7 @@ contract SavingChallenge {
     uint256 public startTime;
     address[] public addressOrderList;
     Stages public stage;
-    uint256 public devEaring = 0;
+    uint256 public devEarning = 0;
 
     //Time constants in seconds
     uint256 public payTime = 0;
@@ -103,15 +103,15 @@ contract SavingChallenge {
     }
 
     modifier isRegisteredUser(bool user) {
-        require(user == true, "Err06");
+        require(user == true, "No se puede depositar, verifique si el reto esta en periodo de inscripcion");
         _;
     }
 
     function addPayment()
         external
         atStage(Stages.Save) {
-        require(saveAmount <= futurePayments(), "Err07");
-        require (getRealPayment() <= numPayments, "Err08");
+        require(saveAmount <= futurePayments(), "No se puede realizar su deposito verifique sus depositos totales");
+        require (getRealPayment() <= numPayments, "No se puede realizar su retiro, verifique si ya retiro previamente");
         uint8 realPayment = getRealPayment();
         if (payment < realPayment){
             AdvancePayment();
@@ -122,7 +122,7 @@ contract SavingChallenge {
             emit PayPlatformFee(msg.sender, payFeeSuccess);
             addressOrderList.push(msg.sender);
         }
-        require(users[msg.sender].isActive == true, "Err06");
+        require(users[msg.sender].isActive == true, "No se puede depositar, verifique si el reto esta en periodo de inscripcion");
         if(users[msg.sender].availableSavings == 0){
             (bool registerUser) = transferFrom(address(this), saveAmount - platformFee);
             emit RegisterUser(msg.sender);
@@ -131,7 +131,6 @@ contract SavingChallenge {
             IPool(aavePool).supply(stableToken, (saveAmount - platformFee), address(this), 0);
             totalSavings += saveAmount;
             users[msg.sender].validPayments++;
-            //IPool(aavePool).withdraw(stableToken, 1111111, partner);
         }
         else{
             (bool success) = transferFrom(address(this), saveAmount);
@@ -153,7 +152,7 @@ contract SavingChallenge {
             uint256 savedAmountTemp = 0;
             uint256 totNumPayments = totalSavings / saveAmount;
             uint256 earning = 0;
-            uint256 earningTemp = getChallengeBalance() - devEaring;
+            uint256 earningTemp = getChallengeBalance() - devEarning;
             earning = ((earningTemp * users[msg.sender].validPayments) / totNumPayments) - users[msg.sender].availableSavings;
             savedAmountTemp = users[msg.sender].availableSavings - partnerFee + earning;
             users[msg.sender].availableSavings = 0;
@@ -176,7 +175,7 @@ contract SavingChallenge {
             withdrawFeeTemp = (savedAmountTemp * 100 * withdrawFee)/ 1000000;
             users[msg.sender].availableSavings = 0;
             users[msg.sender].isActive = false;
-            devEaring += withdrawFeeTemp;
+            devEarning += withdrawFeeTemp;
             totalSavings -= (users[msg.sender].validPayments * saveAmount);
             if (partnerFee > 0){
                 IPool(aavePool).withdraw(stableToken, partnerFee, partner);
